@@ -1,4 +1,4 @@
-package com.waracle.androidtest;
+package com.waracle.androidtest.Utils;
 
 import android.util.Log;
 
@@ -16,19 +16,22 @@ public class StreamUtils {
     // Can you see what's wrong with this???
     public static byte[] readUnknownFully(InputStream stream) throws IOException {
         // Read in stream of bytes
+
         ArrayList<Byte> data = new ArrayList<>();
-        while (true) {
-            int result = stream.read();
-            if (result == -1) {
-                break;
-            }
+
+        int result;
+
+        while ((result = stream.read()) != -1) {
             data.add((byte) result);
         }
 
         // Convert ArrayList<Byte> to byte[]
         byte[] bytes = new byte[data.size()];
+
         for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = data.get(i);
+            if(i < data.size()) {
+                bytes[i] = data.get(i);
+            }
         }
 
         // Return the raw byte array.

@@ -1,7 +1,10 @@
 package com.waracle.androidtest;
 
 import android.annotation.SuppressLint;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.support.v4.app.ListFragment;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -15,21 +18,25 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import com.waracle.androidtest.Models.CakeModel;
+import com.waracle.androidtest.Utils.Constants;
+import com.waracle.androidtest.Utils.ImageLoader;
+import com.waracle.androidtest.Utils.StreamUtils;
+import com.waracle.androidtest.ViewHolders.CakeListItemViewHolder;
+
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 
 
 public class MainActivity extends AppCompatActivity {
 
-    private static String JSON_URL = "https://gist.githubusercontent.com/hart88/198f29ec5114a3ec3460/" +
-            "raw/8dd19a88f9b8d24c23d9960f3300d0c917a4f07c/cake.json";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,7 +91,7 @@ public class MainActivity extends AppCompatActivity {
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
             View rootView = inflater.inflate(R.layout.fragment_main, container, false);
-            mListView = (ListView) rootView.findViewById(R.id.list);
+            mListView = rootView.findViewById(android.R.id.list);
             return rootView;
         }
 
@@ -96,24 +103,49 @@ public class MainActivity extends AppCompatActivity {
             mAdapter = new MyAdapter();
             mListView.setAdapter(mAdapter);
 
-            // Load data from net.
-            try {
-                JSONArray array = loadData();
-                mAdapter.setItems(array);
-            } catch (IOException | JSONException e) {
-                Log.e(TAG, e.getMessage());
-            }
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    // Load data from net.
+                    try {
+                        JSONArray array = loadData();
+
+                        ArrayList<CakeModel> cakeModels = new ArrayList<>();
+
+                        for (int i = 0; i < array.length(); i++) {
+                            try {
+                                cakeModels.add(new CakeModel(array.getJSONObject(i)));
+                            } catch (JSONException e1) {
+                                e1.printStackTrace();
+                            }
+                        }
+
+                        mAdapter.setItems(cakeModels);
+
+                        Handler mainHandler = new Handler(Looper.getMainLooper());
+                        Runnable runnable = new Runnable() {
+                            @Override
+                            public void run() {
+                                mAdapter.notifyDataSetChanged();
+                            }
+                        };
+                        mainHandler.post(runnable);
+
+                    } catch (IOException | JSONException e) {
+                        Log.e(TAG, e.getMessage());
+                    }
+                }
+            });
         }
 
 
         private JSONArray loadData() throws IOException, JSONException {
-            URL url = new URL(JSON_URL);
+            URL url = new URL(Constants.contentJSONUrl);
+
             HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
+
             try {
                 InputStream in = new BufferedInputStream(urlConnection.getInputStream());
-
-                // Can you think of a way to improve the performance of loading data
-                // using HTTP headers???
 
                 // Also, Do you trust any utils thrown your way????
 
@@ -153,32 +185,28 @@ public class MainActivity extends AppCompatActivity {
 
         private class MyAdapter extends BaseAdapter {
 
-            // Can you think of a better way to represent these items???
-            private JSONArray mItems;
+            private ArrayList<CakeModel> mItems;
             private ImageLoader mImageLoader;
 
-            public MyAdapter() {
-                this(new JSONArray());
+            MyAdapter() {
+                this(new ArrayList<CakeModel>());
             }
 
-            public MyAdapter(JSONArray items) {
+            MyAdapter(ArrayList<CakeModel> items) {
                 mItems = items;
                 mImageLoader = new ImageLoader();
             }
 
             @Override
             public int getCount() {
-                return mItems.length();
+                return mItems.size();
             }
 
             @Override
-            public Object getItem(int position) {
-                try {
-                    return mItems.getJSONObject(position);
-                } catch (JSONException e) {
-                    Log.e("", e.getMessage());
-                }
-                return null;
+            public CakeModel getItem(int position) {
+
+                return mItems.get(position);
+
             }
 
             @Override
@@ -189,28 +217,40 @@ public class MainActivity extends AppCompatActivity {
             @SuppressLint("ViewHolder")
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
-                LayoutInflater inflater = LayoutInflater.from(getActivity());
-                View root = inflater.inflate(R.layout.list_item_layout, parent, false);
-                if (root != null) {
-                    TextView title = (TextView) root.findViewById(R.id.title);
-                    TextView desc = (TextView) root.findViewById(R.id.desc);
-                    ImageView image = (ImageView) root.findViewById(R.id.image);
-                    try {
-                        JSONObject object = (JSONObject) getItem(position);
-                        title.setText(object.getString("title"));
-                        desc.setText(object.getString("desc"));
-                        mImageLoader.load(object.getString("image"), image);
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                    }
+
+                CakeListItemViewHolder cakeListItemViewHolder;
+
+                if (convertView == null) {
+                    LayoutInflater inflater = LayoutInflater.from(getActivity());
+                    convertView = inflater.inflate(R.layout.list_item_layout, parent, false);
+                    cakeListItemViewHolder = new CakeListItemViewHolder();
+                    cakeListItemViewHolder.setTitleTextView((TextView) convertView.findViewById(R.id.title));
+                    cakeListItemViewHolder.setDescriptionTextView((TextView) convertView.findViewById(R.id.desc));
+                    cakeListItemViewHolder.setImageView((ImageView) convertView.findViewById(R.id.image));
+
+                    convertView.setTag(cakeListItemViewHolder);
+                } else {
+                    cakeListItemViewHolder = (CakeListItemViewHolder) convertView.getTag();
                 }
 
-                return root;
+
+                CakeModel cakeModel = getItem(position);
+
+                if(cakeModel != null) {
+                    cakeListItemViewHolder.getTitleTextView().setText(cakeModel.getTitle());
+                    cakeListItemViewHolder.getDescriptionTextView().setText(cakeModel.getDescription());
+                    mImageLoader.load(cakeModel.getImagePath(), cakeListItemViewHolder.getImageView(), cakeModel.getPlaceHolderImage());
+                }
+
+                return convertView;
             }
 
-            public void setItems(JSONArray items) {
+            public void setItems(ArrayList<CakeModel> items) {
                 mItems = items;
             }
+
+
         }
     }
 }
+
